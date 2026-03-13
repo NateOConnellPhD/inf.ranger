@@ -1,0 +1,25 @@
+Package: inf.ranger
+Type: Package
+Title: Inference Forest Extensions to Ranger Random Forests
+Version: 0.1.0
+Date: 2026-03-13
+Authors@R: c(
+    person("Nathaniel S.", "O'Connell", email = "nathaniel.oconnell@wfusm.edu", role = c("aut", "cre")),
+    person("Marvin N.", "Wright", role = "aut", comment = "Original ranger package"))
+Description: A modified version of the ranger random forest package that adds 
+    standardized splitting criteria and softmax variable selection for use with 
+    the inference forest framework of O'Connell (2026). Includes corrections for 
+    balance advantage and search advantage in split selection, enabling fair 
+    comparison of binary and continuous candidate variables. All original ranger 
+    functionality is preserved. Based on ranger by Wright and Ziegler (2017).
+License: GPL-3
+Imports: Rcpp (>= 0.11.2), Matrix
+LinkingTo: Rcpp, RcppEigen
+Depends: R (>= 3.1)
+Suggests: 
+    survival,
+    testthat
+Encoding: UTF-8
+RoxygenNote: 7.3.3
+URL: https://github.com/NateOConnellPhD/ranger
+BugReports: https://github.com/NateOConnellPhD/ranger/issues
