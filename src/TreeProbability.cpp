@@ -200,7 +200,8 @@ bool TreeProbability::findBestSplit(size_t nodeID, std::vector<size_t>& possible
     // === STANDARDIZED SPLITTING CRITERION (Probability/Classification) ===
     // Same two-pass approach as TreeRegression:
     //   1. Balance correction: n_t / (n_L* * n_R*)
-    //   2. Search penalty: tau^2 * sqrt(2*log(M_j))
+    //   2. Search penalty: tau^2 * 2*log(2*M_j)
+    //      (E[max of M iid chi_1^2] = 2*log(2M) + O(log log M); leading term is conservative.)
     //
     // For Gini criterion: decrease = sum_k n_Lk^2/n_L + sum_k n_Rk^2/n_R
     // The "node total" analogue is sum_k n_k^2/n_t (constant across splits of same node)
@@ -298,11 +299,8 @@ bool TreeProbability::findBestSplit(size_t nodeID, std::vector<size_t>& possible
       double G_j = var_decreases[k] - node_purity_term;
       if (G_j < 0) G_j = 0;
 
-      // Search penalty
-      double search_penalty = 0.0;
-      if (var_num_cutpoints[k] > 1) {
-        search_penalty = tau2 * std::sqrt(2.0 * std::log((double)var_num_cutpoints[k]));
-      }
+      // Search penalty: E[max of M_j iid chi_1^2] = 2*log(2*M_j) + O(log log M_j)
+      double search_penalty = tau2 * 2.0 * std::log(2.0 * (double)var_num_cutpoints[k]);
 
       double G_j_penalized = G_j - search_penalty;
       if (G_j_penalized <= 0) continue;
@@ -372,6 +370,93 @@ bool TreeProbability::findBestSplit(size_t nodeID, std::vector<size_t>& possible
       best_varID = var_ids[viable_idx[winner]];
       best_value = var_values[viable_idx[winner]];
       best_decrease = var_decreases[viable_idx[winner]];
+    }
+
+  } else if (softmax_split) {
+    // === SOFTMAX WITHOUT PENALTY (Probability) ===
+    // Use raw impurity decrease for softmax probabilities (no balance or search correction)
+    std::vector<size_t> var_ids;
+    std::vector<double> var_decreases_vec;
+    std::vector<double> var_values_vec;
+    var_ids.reserve(possible_split_varIDs.size());
+    var_decreases_vec.reserve(possible_split_varIDs.size());
+    var_values_vec.reserve(possible_split_varIDs.size());
+
+    for (auto& varID : possible_split_varIDs) {
+      double var_best_decrease = -1;
+      size_t var_best_varID = 0;
+      double var_best_value = 0;
+
+      if (data->isOrderedVariable(varID)) {
+        if (memory_saving_splitting) {
+          findBestSplitValueSmallQ(nodeID, varID, num_classes, class_counts, num_samples_node,
+              var_best_value, var_best_varID, var_best_decrease);
+        } else {
+          double q = (double) num_samples_node / (double) data->getNumUniqueDataValues(varID);
+          if (q < Q_THRESHOLD) {
+            if (data->hasNA()) {
+              findBestSplitValueNanSmallQ(nodeID, varID, num_classes, class_counts, num_samples_node,
+                  var_best_value, var_best_varID, var_best_decrease);
+            } else {
+              findBestSplitValueSmallQ(nodeID, varID, num_classes, class_counts, num_samples_node,
+                  var_best_value, var_best_varID, var_best_decrease);
+            }
+          } else {
+            if (data->hasNA()) {
+              findBestSplitValueNanLargeQ(nodeID, varID, num_classes, class_counts, num_samples_node,
+                  var_best_value, var_best_varID, var_best_decrease);
+            } else {
+              findBestSplitValueLargeQ(nodeID, varID, num_classes, class_counts, num_samples_node,
+                  var_best_value, var_best_varID, var_best_decrease);
+            }
+          }
+        }
+      } else {
+        findBestSplitValueUnordered(nodeID, varID, num_classes, class_counts, num_samples_node,
+            var_best_value, var_best_varID, var_best_decrease);
+      }
+
+      if (var_best_decrease >= 0) {
+        var_ids.push_back(varID);
+        var_decreases_vec.push_back(var_best_decrease);
+        var_values_vec.push_back(var_best_value);
+      }
+    }
+
+    if (!var_ids.empty()) {
+      // Use raw decrease as softmax weight (all positive since decrease >= 0)
+      std::vector<double> weights;
+      std::vector<size_t> viable_idx;
+      for (size_t k = 0; k < var_ids.size(); ++k) {
+        if (var_decreases_vec[k] > 0) {
+          weights.push_back(var_decreases_vec[k]);
+          viable_idx.push_back(k);
+        }
+      }
+
+      if (!viable_idx.empty()) {
+        size_t winner;
+        if (viable_idx.size() > 1) {
+          double total = 0.0;
+          for (auto& w : weights) total += w;
+          std::uniform_real_distribution<double> udist(0.0, 1.0);
+          double u = udist(random_number_generator);
+          double cumprob = 0.0;
+          winner = viable_idx.size() - 1;
+          for (size_t j = 0; j < viable_idx.size(); ++j) {
+            cumprob += weights[j] / total;
+            if (u <= cumprob) {
+              winner = j;
+              break;
+            }
+          }
+        } else {
+          winner = 0;
+        }
+        best_varID = var_ids[viable_idx[winner]];
+        best_value = var_values_vec[viable_idx[winner]];
+        best_decrease = var_decreases_vec[viable_idx[winner]];
+      }
     }
 
   } else {

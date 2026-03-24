@@ -197,11 +197,13 @@ bool TreeRegression::findBestSplit(size_t nodeID, std::vector<size_t>& possible_
       //      constrained (e.g., 10% prevalence: balance weight = 0.09*n_t).
       //      Correction: multiply by n_t / (n_L* * n_R*) to remove balance weight.
       //   2. Search advantage: continuous variables maximize over ~n_t cutpoints,
-      //      inflating G_j* by expected noise max ~ tau^2 * sqrt(2*log(M_j)).
-      //      Correction: subtract tau^2 * sqrt(2*log(M_j)).
+      //      inflating G_j* by expected noise max ~ tau^2 * 2*log(2*M_j).
+      //      (E[max of M iid chi_1^2] = 2*log(2M) + O(log log M); leading term
+      //       is conservative.)
+      //      Correction: subtract tau^2 * 2*log(2*M_j).
       //
       // Standardized criterion:
-      //   Delta_tilde_j = (n_t / (n_L* * n_R*)) * [G_j* - tau^2 * sqrt(2*log(M_j))]
+      //   Delta_tilde_j = (n_t / (n_L* * n_R*)) * [G_j* - tau^2 * 2*log(2*M_j)]
       //
       // where G_j* = (n_L*n_R/n_t) * (ybar_L - ybar_R)^2 is the best CART criterion
       // for variable j, and tau^2 = sigma^2_t / n_t is the noise floor per split.
@@ -286,7 +288,7 @@ bool TreeRegression::findBestSplit(size_t nodeID, std::vector<size_t>& possible_
       // For each variable's best split, recover n_L* and n_R* by counting,
       // then compute:
       //   G_j* = decrease_j - (sum_node^2 / n_t)   [CART impurity reduction]
-      //   Delta_tilde_j = (n_t / (n_L* * n_R*)) * max(G_j* - tau^2 * sqrt(2*log(M_j)), 0)
+      //   Delta_tilde_j = (n_t / (n_L* * n_R*)) * max(G_j* - tau^2 * 2*log(2*M_j), 0)
       double node_mean_sq_term = (sum_node * sum_node) / (double) num_samples_node;
 
       // Collect standardized values for all viable candidates
@@ -299,11 +301,9 @@ bool TreeRegression::findBestSplit(size_t nodeID, std::vector<size_t>& possible_
         double G_j = var_decreases[k] - node_mean_sq_term;
         if (G_j < 0) G_j = 0;  // numerical guard
 
-        // Search penalty: expected noise inflation from maximizing over M_j cutpoints
-        double search_penalty = 0.0;
-        if (var_num_cutpoints[k] > 1) {
-          search_penalty = tau2 * std::sqrt(2.0 * std::log((double)var_num_cutpoints[k]));
-        }
+        // Search penalty: E[max of M_j iid chi_1^2] = 2*log(2*M_j) + O(log log M_j)
+        // Using the leading term (conservative: oversubtracts slightly)
+        double search_penalty = tau2 * 2.0 * std::log(2.0 * (double)var_num_cutpoints[k]);
 
         // Penalized CART criterion (before balance correction)
         double G_j_penalized = G_j - search_penalty;
@@ -385,6 +385,95 @@ bool TreeRegression::findBestSplit(size_t nodeID, std::vector<size_t>& possible_
         best_varID = var_ids[viable_idx[winner]];
         best_value = var_values[viable_idx[winner]];
         best_decrease = var_decreases[viable_idx[winner]]; // Use unpenalized for importance
+      }
+
+    } else if (softmax_split) {
+      // === SOFTMAX WITHOUT PENALTY ===
+      // Use raw impurity decrease for softmax probabilities (no balance or search correction)
+      std::vector<size_t> var_ids;
+      std::vector<double> var_decreases;
+      std::vector<double> var_values;
+      var_ids.reserve(possible_split_varIDs.size());
+      var_decreases.reserve(possible_split_varIDs.size());
+      var_values.reserve(possible_split_varIDs.size());
+
+      for (auto& varID : possible_split_varIDs) {
+        double var_best_decrease = -1;
+        size_t var_best_varID = 0;
+        double var_best_value = 0;
+
+        if (data->isOrderedVariable(varID)) {
+          if (memory_saving_splitting) {
+            findBestSplitValueSmallQ(nodeID, varID, sum_node, num_samples_node,
+                var_best_value, var_best_varID, var_best_decrease);
+          } else {
+            double q = (double) num_samples_node / (double) data->getNumUniqueDataValues(varID);
+            if (q < Q_THRESHOLD) {
+              if (data->hasNA()) {
+                findBestSplitValueNanSmallQ(nodeID, varID, sum_node, num_samples_node,
+                    var_best_value, var_best_varID, var_best_decrease);
+              } else {
+                findBestSplitValueSmallQ(nodeID, varID, sum_node, num_samples_node,
+                    var_best_value, var_best_varID, var_best_decrease);
+              }
+            } else {
+              if (data->hasNA()) {
+                findBestSplitValueNanLargeQ(nodeID, varID, sum_node, num_samples_node,
+                    var_best_value, var_best_varID, var_best_decrease);
+              } else {
+                findBestSplitValueLargeQ(nodeID, varID, sum_node, num_samples_node,
+                    var_best_value, var_best_varID, var_best_decrease);
+              }
+            }
+          }
+        } else {
+          findBestSplitValueUnordered(nodeID, varID, sum_node, num_samples_node,
+              var_best_value, var_best_varID, var_best_decrease);
+        }
+
+        if (var_best_decrease >= 0) {
+          var_ids.push_back(varID);
+          var_decreases.push_back(var_best_decrease);
+          var_values.push_back(var_best_value);
+        }
+      }
+
+      if (!var_ids.empty()) {
+        // Subtract node mean term to get CART criterion G_j for softmax weights
+        double node_mean_sq_term = (sum_node * sum_node) / (double) num_samples_node;
+        std::vector<double> G_values;
+        std::vector<size_t> viable_idx;
+        for (size_t k = 0; k < var_ids.size(); ++k) {
+          double G_j = var_decreases[k] - node_mean_sq_term;
+          if (G_j > 0) {
+            G_values.push_back(G_j);
+            viable_idx.push_back(k);
+          }
+        }
+
+        if (!viable_idx.empty()) {
+          size_t winner;
+          if (viable_idx.size() > 1) {
+            double total = 0.0;
+            for (auto& g : G_values) total += g;
+            std::uniform_real_distribution<double> udist(0.0, 1.0);
+            double u = udist(random_number_generator);
+            double cumprob = 0.0;
+            winner = viable_idx.size() - 1;
+            for (size_t j = 0; j < viable_idx.size(); ++j) {
+              cumprob += G_values[j] / total;
+              if (u <= cumprob) {
+                winner = j;
+                break;
+              }
+            }
+          } else {
+            winner = 0;
+          }
+          best_varID = var_ids[viable_idx[winner]];
+          best_value = var_values[viable_idx[winner]];
+          best_decrease = var_decreases[viable_idx[winner]];
+        }
       }
 
     } else {

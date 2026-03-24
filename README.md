@@ -1,80 +1,43 @@
-[![R-CMD-check](https://github.com/imbs-hl/ranger/workflows/R-CMD-check/badge.svg)](https://github.com/imbs-hl/ranger/actions)
-![CRAN Downloads month](https://cranlogs.r-pkg.org/badges/ranger?color=brightgreen)
-![CRAN Downloads overall](https://cranlogs.r-pkg.org/badges/grand-total/ranger?color=brightgreen)
-## ranger: A Fast Implementation of Random Forests
-Marvin N. Wright
+## inf.ranger: Modified ranger for inference forests
 
-### Introduction
-ranger is a fast implementation of random forests (Breiman 2001) or recursive partitioning, particularly suited for high dimensional data. Classification, regression, and survival forests are supported. Classification and regression forests are implemented as in the original Random Forest (Breiman 2001), survival forests as in Random Survival Forests (Ishwaran et al. 2008). Includes implementations of extremely randomized trees (Geurts et al. 2006) and quantile regression forests (Meinshausen 2006).
+`inf.ranger` is a minimal fork of [ranger](https://github.com/imbs-hl/ranger) (Wright & Ziegler, 2017) with two targeted modifications to the split selection code. All other ranger internals — tree growing, prediction, survival forests, variable importance, and the C++/R interface — are unchanged.
 
-ranger is written in C++, but a version for R is available, too. We recommend to use the R version. It is easy to install and use and the results are readily available for further analysis. The R version is as fast as the standalone C++ version.
+### Modifications
+
+**Standardized splitting criterion** (`penalize.split.competition = TRUE`). At each node, CART selects the variable with the largest impurity reduction. But continuous variables evaluate many more candidate split points than binary or low-cardinality variables, giving them a structural search advantage. The standardized criterion subtracts the expected impurity gain under the null (no signal) from each variable's best split score, producing a level comparison across variable types. The correction is closed-form and adds negligible computation.
+
+**Softmax variable selection** (`softmax.split = TRUE`). Standard CART selects the single best variable at each node (argmax). Softmax replaces this with probabilistic selection: variables are chosen with probability proportional to their standardized criterion scores. This increases the inclusion rate for variables with moderate but real signal. Requires `penalize.split.competition = TRUE`.
+
+Both modifications operate only at the moment of variable selection within each node. Everything downstream — split point optimization, daughter node assignment, leaf predictions, and all prediction methods — is identical to standard ranger.
 
 ### Installation
-#### R version
-To install the ranger R package from CRAN, just run
 
-```R
-install.packages("ranger")
+```r
+devtools::install_github("NateOConnellPhD/inf.ranger")
 ```
-
-R version >= 3.1 is required. With recent R versions, multithreading on Windows platforms should just work. If you compile yourself, the new RTools toolchain is required.
-
-To install the development version from GitHub using `devtools`, run
-
-```R
-devtools::install_github("imbs-hl/ranger")
-```
-
-#### Standalone C++ version
-To install the C++ version of ranger in Linux or Mac OS X you will need a compiler supporting C++14 (i.e. gcc >= 5 or Clang >= 3.4) and Cmake. To build start a terminal from the ranger main directory and run the following commands
-
-```bash
-cd cpp_version
-mkdir build
-cd build
-cmake ..
-make
-```
-
-After compilation there should be an executable called "ranger" in the build directory. 
-
-To run the C++ version in Microsoft Windows please cross compile or ask for a binary.
 
 ### Usage
-#### R version
-For usage of the R version see ?ranger in R. Most importantly, see the Examples section. As a first example you could try 
 
-```R  
-ranger(Species ~ ., data = iris)
+```r
+library(inf.ranger)
+
+# Standard ranger call — fully compatible
+ranger(y ~ ., data = dat, num.trees = 5000)
+
+# With standardized splitting
+ranger(y ~ ., data = dat, num.trees = 5000, penalize.split.competition = TRUE)
+
+# With softmax selection
+ranger(y ~ ., data = dat, num.trees = 5000,
+       penalize.split.competition = TRUE, softmax.split = TRUE)
 ```
 
-#### Standalone C++ version
-In the C++ version type 
+### Related packages
 
-```bash
-./ranger --help 
-```
-
-for a list of commands. First you need a training dataset in a file. This file should contain one header line with variable names and one line with variable values per sample (numeric only). Variable names must not contain any whitespace, comma or semicolon. Values can be separated by whitespace, comma or semicolon but can not be mixed in one file. A typical call of ranger would be for example
-
-```bash
-./ranger --verbose --file data.dat --depvarname Species --treetype 1 --ntree 1000 --nthreads 4
-```
-
-If you find any bugs, or if you experience any crashes, please report to us. If you have any questions just ask, we won't bite. 
-
-Please cite our paper if you use ranger.
+- **[infForest](https://github.com/NateOConnellPhD/infForest)** — Nonparametric inference from random forests using `inf.ranger` as its forest engine. Effect estimation, prediction intervals, variance decomposition, and uncertainty quantification.
+- **[ranger](https://github.com/imbs-hl/ranger)** — The original fast random forest implementation by Wright & Ziegler. See their documentation for full details on all ranger features and parameters.
 
 ### References
-* Wright, M. N. & Ziegler, A. (2017). ranger: A fast implementation of random forests for high dimensional data in C++ and R. J Stat Softw 77:1-17. https://doi.org/10.18637/jss.v077.i01.
-* Schmid, M., Wright, M. N. & Ziegler, A. (2016). On the use of Harrell's C for clinical risk prediction via random survival forests. Expert Syst Appl 63:450-459. https://doi.org/10.1016/j.eswa.2016.07.018.
-* Wright, M. N., Dankowski, T. & Ziegler, A. (2017). Unbiased split variable selection for random survival forests using maximally selected rank statistics. Stat Med 36:1272-1284. https://doi.org/10.1002/sim.7212.
-* Nembrini, S., König, I. R. & Wright, M. N. (2018). The revival of the Gini Importance? Bioinformatics. https://doi.org/10.1093/bioinformatics/bty373.
-* Breiman, L. (2001). Random forests. Mach Learn, 45:5-32. https://doi.org/10.1023/A:1010933404324.
-* Ishwaran, H., Kogalur, U. B., Blackstone, E. H., & Lauer, M. S. (2008). Random survival forests. Ann Appl Stat 2:841-860. https://doi.org/10.1097/JTO.0b013e318233d835.
-* Malley, J. D., Kruppa, J., Dasgupta, A., Malley, K. G., & Ziegler, A. (2012). Probability machines: consistent probability estimation using nonparametric learning machines. Methods Inf Med 51:74-81. https://doi.org/10.3414/ME00-01-0052.
-* Hastie, T., Tibshirani, R., Friedman, J. (2009). The Elements of Statistical Learning. Springer, New York. 2nd edition.
-* Geurts, P., Ernst, D., Wehenkel, L. (2006). Extremely randomized trees. Mach Learn 63:3-42. https://doi.org/10.1007/s10994-006-6226-1.
-* Meinshausen (2006). Quantile Regression Forests. J Mach Learn Res 7:983-999. http://www.jmlr.org/papers/v7/meinshausen06a.html.
-* Sandri, M. & Zuccolotto, P. (2008). A bias correction algorithm for the Gini variable importance measure in classification trees. J Comput Graph Stat, 17:611-628. https://doi.org/10.1198/106186008X344522.
-* Coppersmith D., Hong S. J., Hosking J. R. (1999). Partitioning nominal attributes in decision trees. Data Min Knowl Discov 3:197-217. https://doi.org/10.1023/A:1009869804967.
+
+- Wright, M. N. & Ziegler, A. (2017). ranger: A fast implementation of random forests for high dimensional data in C++ and R. *J Stat Softw* 77:1-17. https://doi.org/10.18637/jss.v077.i01.
+- O'Connell, N. S. (2026). Random Forests as Statistical Procedures: Design, Variance, and Dependence. *arXiv:2602.13104*. https://arxiv.org/abs/2602.13104
