@@ -199,7 +199,7 @@ bool TreeProbability::findBestSplit(size_t nodeID, std::vector<size_t>& possible
   if (penalize_split_competition) {
     // Initialize criterion accumulators on first call
     if (criterion_sums.empty()) {
-      size_t num_vars = data->getNumCols() - 1;
+      size_t num_vars = data->getNumCols();
       criterion_sums.resize(num_vars, 0.0);
       criterion_counts.resize(num_vars, 0);
     }
