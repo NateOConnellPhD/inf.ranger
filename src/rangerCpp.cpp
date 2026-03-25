@@ -266,6 +266,7 @@ Rcpp::List rangerCpp(uint treetype, Rcpp::NumericMatrix& input_x, Rcpp::NumericM
       
       // Standardized criterion accumulators (aggregated across all trees)
       if (penalize_split_competition) {
+        forest_object.push_back(42.0, "debug.test");
         std::vector<double> crit_sums = forest->getCriterionSums();
         std::vector<size_t> crit_counts_raw = forest->getCriterionCounts();
         std::vector<int> crit_counts(crit_counts_raw.begin(), crit_counts_raw.end());
