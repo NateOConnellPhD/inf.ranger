@@ -197,33 +197,26 @@ bool TreeProbability::findBestSplit(size_t nodeID, std::vector<size_t>& possible
 
   // For all possible split variables
   if (penalize_split_competition) {
+    // Initialize criterion accumulators on first call
+    if (criterion_sums.empty()) {
+      size_t num_vars = data->getNumCols() - 1;
+      criterion_sums.resize(num_vars, 0.0);
+      criterion_counts.resize(num_vars, 0);
+    }
+
     // === STANDARDIZED SPLITTING CRITERION (Probability/Classification) ===
     // Same two-pass approach as TreeRegression:
     //   1. Balance correction: n_t / (n_L* * n_R*)
     //   2. Search penalty: tau^2 * 2*log(2*M_j)
-    //      (E[max of M iid chi_1^2] = 2*log(2M) + O(log log M); leading term is conservative.)
-    //
-    // For Gini criterion: decrease = sum_k n_Lk^2/n_L + sum_k n_Rk^2/n_R
-    // The "node total" analogue is sum_k n_k^2/n_t (constant across splits of same node)
-    // G_j = decrease - sum_k n_k^2/n_t  (Gini improvement, embeds balance weight)
-    //
-    // tau^2 is estimated from the within-node Gini impurity.
 
-    // Compute within-node Gini impurity for penalty scaling
-    // Gini impurity = 1 - sum_k (n_k/n_t)^2 = (n_t - sum_k n_k^2/n_t) / n_t
-    double node_purity_term = 0.0;  // sum_k n_k^2 / n_t
+    double node_purity_term = 0.0;
     for (size_t j = 0; j < num_classes; ++j) {
       node_purity_term += (double) class_counts[j] * (double) class_counts[j];
     }
     node_purity_term /= (double) num_samples_node;
     double gini_impurity = 1.0 - node_purity_term / (double) num_samples_node;
-    // tau^2: noise floor for Gini-based criterion, analogous to sigma^2/n_t for regression
-    // For binary: Gini = 2*p*(1-p), variance of Bernoulli = p*(1-p), so tau^2 ~ gini / (2*n_t)
-    // General: tau^2 = gini_impurity / n_t is a reasonable scaling
-    double tau2 = gini_impurity * (double) num_samples_node / ((double) num_samples_node);
-    // Actually: for Gini decrease, the expected noise level of a random split is proportional
-    // to gini_impurity. We use tau^2 = gini_impurity as the scale.
-    tau2 = gini_impurity;
+    // tau^2 = I(t) / (n_t - 1): exact null expectation from hypergeometric distribution
+    double tau2 = (num_samples_node > 1) ? gini_impurity / (double)(num_samples_node - 1) : 0.0;
 
     // Storage for per-variable best splits
     std::vector<size_t> var_ids;
@@ -295,14 +288,20 @@ bool TreeProbability::findBestSplit(size_t nodeID, std::vector<size_t>& possible
     std::vector<double> standardized_values;
 
     for (size_t k = 0; k < var_ids.size(); ++k) {
-      // G_j = decrease - node_purity_term (Gini improvement, with balance weight)
       double G_j = var_decreases[k] - node_purity_term;
       if (G_j < 0) G_j = 0;
 
-      // Search penalty: E[max of M_j iid chi_1^2] = 2*log(2*M_j) + O(log log M_j)
-      double search_penalty = tau2 * 2.0 * std::log(2.0 * (double)var_num_cutpoints[k]);
+      double search_penalty = tau2;  // baseline for M_j = 1
+      if (var_num_cutpoints[k] > 1) {
+        search_penalty = tau2 * 2.0 * std::log(2.0 * (double)var_num_cutpoints[k]);
+      }
 
       double G_j_penalized = G_j - search_penalty;
+
+      // Accumulate for eimp
+      criterion_sums[var_ids[k]] += G_j_penalized;
+      criterion_counts[var_ids[k]] += 1;
+
       if (G_j_penalized <= 0) continue;
 
       // Recover n_L* and n_R*

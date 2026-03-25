@@ -193,6 +193,13 @@ bool TreeClassification::findBestSplit(size_t nodeID, std::vector<size_t>& possi
 
   // For all possible split variables
   if (penalize_split_competition) {
+    // Initialize criterion accumulators on first call
+    if (criterion_sums.empty()) {
+      size_t num_vars = data->getNumCols() - 1;
+      criterion_sums.resize(num_vars, 0.0);
+      criterion_counts.resize(num_vars, 0);
+    }
+
     // === STANDARDIZED SPLITTING CRITERION (Classification) ===
     // Same approach as TreeProbability — see comments there.
 
@@ -202,7 +209,8 @@ bool TreeClassification::findBestSplit(size_t nodeID, std::vector<size_t>& possi
     }
     node_purity_term /= (double) num_samples_node;
     double gini_impurity = 1.0 - node_purity_term / (double) num_samples_node;
-    double tau2 = gini_impurity;
+    // tau^2 = I(t) / (n_t - 1): exact null expectation from hypergeometric distribution
+    double tau2 = (num_samples_node > 1) ? gini_impurity / (double)(num_samples_node - 1) : 0.0;
 
     std::vector<size_t> var_ids;
     std::vector<double> var_decreases;
@@ -274,10 +282,17 @@ bool TreeClassification::findBestSplit(size_t nodeID, std::vector<size_t>& possi
       double G_j = var_decreases[k] - node_purity_term;
       if (G_j < 0) G_j = 0;
 
-      // Search penalty: E[max of M_j iid chi_1^2] = 2*log(2*M_j) + O(log log M_j)
-      double search_penalty = tau2 * 2.0 * std::log(2.0 * (double)var_num_cutpoints[k]);
+      double search_penalty = tau2;  // baseline for M_j = 1
+      if (var_num_cutpoints[k] > 1) {
+        search_penalty = tau2 * 2.0 * std::log(2.0 * (double)var_num_cutpoints[k]);
+      }
 
       double G_j_penalized = G_j - search_penalty;
+
+      // Accumulate for eimp
+      criterion_sums[var_ids[k]] += G_j_penalized;
+      criterion_counts[var_ids[k]] += 1;
+
       if (G_j_penalized <= 0) continue;
 
       size_t n_left_star = 0;

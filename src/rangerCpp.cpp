@@ -263,6 +263,12 @@ Rcpp::List rangerCpp(uint treetype, Rcpp::NumericMatrix& input_x, Rcpp::NumericM
         forest_object.push_back(forest->getNumSamplesNodes(), "num.samples.nodes");
         forest_object.push_back(forest->getSplitStats(), "split.stats");
       }
+      
+      // Standardized criterion accumulators (aggregated across all trees)
+      if (penalize_split_competition) {
+        forest_object.push_back(forest->getCriterionSums(), "criterion.sums");
+        forest_object.push_back(forest->getCriterionCounts(), "criterion.counts");
+      }
 
       if (snp_data.nrow() > 1 && order_snps) {
         // Exclude permuted SNPs (if any)

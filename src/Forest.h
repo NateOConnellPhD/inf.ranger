@@ -169,6 +169,28 @@ public:
     }
     return result;
   }
+  
+  // Aggregated criterion accumulators across all trees (for eimp)
+  std::vector<double> getCriterionSums() {
+    std::vector<double> result(num_independent_variables, 0.0);
+    for (auto& tree : trees) {
+      const auto& cs = tree->getCriterionSums();
+      for (size_t j = 0; j < cs.size() && j < num_independent_variables; ++j) {
+        result[j] += cs[j];
+      }
+    }
+    return result;
+  }
+  std::vector<size_t> getCriterionCounts() {
+    std::vector<size_t> result(num_independent_variables, 0);
+    for (auto& tree : trees) {
+      const auto& cc = tree->getCriterionCounts();
+      for (size_t j = 0; j < cc.size() && j < num_independent_variables; ++j) {
+        result[j] += cc[j];
+      }
+    }
+    return result;
+  }
 
 protected:
   void grow();

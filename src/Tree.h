@@ -85,6 +85,13 @@ public:
   const std::vector<double>& getSplitStats() const {
     return split_stats;
   }
+  
+  const std::vector<double>& getCriterionSums() const {
+    return criterion_sums;
+  }
+  const std::vector<size_t>& getCriterionCounts() const {
+    return criterion_counts;
+  }
 
 protected:
   void createPossibleSplitVarSubset(std::vector<size_t>& result);
@@ -251,6 +258,12 @@ protected:
   // Penalized split competition: correct for multiple comparisons bias
   bool penalize_split_competition;
   bool softmax_split;
+  
+  // Standardized criterion accumulators (for eimp)
+  // criterion_sums[j] = sum of G_j_penalized across all nodes where j was a candidate
+  // criterion_counts[j] = number of nodes where j was evaluated
+  std::vector<double> criterion_sums;
+  std::vector<size_t> criterion_counts;
   
   // Should NaNs go to right child for the current split?
   bool nan_go_right;
