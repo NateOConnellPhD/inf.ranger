@@ -217,10 +217,8 @@ bool TreeRegression::findBestSplit(size_t nodeID, std::vector<size_t>& possible_
         ss += diff * diff;
       }
       double sigma2_t = (num_samples_node > 1) ? ss / (double)(num_samples_node - 1) : 0.0;
-      // tau^2 = sigma^2_t: noise floor for the expected criterion under null
-      // G_j(c) = (n_L*n_R/n_t)*(Ybar_L-Ybar_R)^2; under null Ybar_L-Ybar_R ~ N(0, sigma^2*n_t/(n_L*n_R))
-      // so G_j(c) = sigma^2 * Z^2 ~ sigma^2 * chi_1^2. Therefore tau^2 = sigma^2, NOT sigma^2/n_t.
-      double tau2 = sigma2_t;
+      // tau^2 = sigma^2_t / n_t: noise floor for the expected criterion under null
+      double tau2 = sigma2_t / (double) num_samples_node;
 
       // Storage for per-variable best splits
       std::vector<size_t> var_ids;
