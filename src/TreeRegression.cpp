@@ -190,6 +190,13 @@ bool TreeRegression::findBestSplit(size_t nodeID, std::vector<size_t>& possible_
   if (num_samples_node >= 2 * (*min_bucket)[0]) {
 
     if (penalize_split_competition) {
+      // Initialize criterion accumulators on first call
+      if (criterion_sums.empty()) {
+        size_t num_vars = data->getNumCols();
+        criterion_sums.resize(num_vars, 0.0);
+        criterion_counts.resize(num_vars, 0);
+      }
+
       // === STANDARDIZED SPLITTING CRITERION ===
       // Corrects two sources of variable selection bias:
       //   1. Balance advantage: continuous variables achieve near-balanced splits
@@ -206,7 +213,8 @@ bool TreeRegression::findBestSplit(size_t nodeID, std::vector<size_t>& possible_
       //   Delta_tilde_j = (n_t / (n_L* * n_R*)) * [G_j* - tau^2 * 2*log(2*M_j)]
       //
       // where G_j* = (n_L*n_R/n_t) * (ybar_L - ybar_R)^2 is the best CART criterion
-      // for variable j, and tau^2 = sigma^2_t / n_t is the noise floor per split.
+      // for variable j, and tau^2 = sigma^2 is the noise floor (constant across
+      // all variables and cutpoints due to exact cancellation of balance weights).
 
       // Compute within-node residual variance for penalty scaling
       double mean_node = sum_node / (double) num_samples_node;
@@ -217,8 +225,9 @@ bool TreeRegression::findBestSplit(size_t nodeID, std::vector<size_t>& possible_
         ss += diff * diff;
       }
       double sigma2_t = (num_samples_node > 1) ? ss / (double)(num_samples_node - 1) : 0.0;
-      // tau^2 = sigma^2_t / n_t: noise floor for the expected criterion under null
-      double tau2 = sigma2_t / (double) num_samples_node;
+      // tau^2 = sigma^2: noise floor for the expected criterion under null
+      // E[G_j(c) | null] = (n_L*n_R/n_t)*0 + sigma^2 = sigma^2
+      double tau2 = sigma2_t;
 
       // Storage for per-variable best splits
       std::vector<size_t> var_ids;
@@ -301,14 +310,21 @@ bool TreeRegression::findBestSplit(size_t nodeID, std::vector<size_t>& possible_
         double G_j = var_decreases[k] - node_mean_sq_term;
         if (G_j < 0) G_j = 0;  // numerical guard
 
-        // Search penalty: E[max of M_j iid chi_1^2] = 2*log(2*M_j) + O(log log M_j)
-        // Using the leading term (conservative: oversubtracts slightly)
-        double search_penalty = tau2 * 2.0 * std::log(2.0 * (double)var_num_cutpoints[k]);
+        // Search penalty: E[G_j* | null] = tau^2 * 2*log(2*M_j) for M_j > 1
+        // For M_j = 1: exact value is tau^2 (single cutpoint, no search excess)
+        double search_penalty = tau2;  // baseline for M_j = 1
+        if (var_num_cutpoints[k] > 1) {
+          search_penalty = tau2 * 2.0 * std::log(2.0 * (double)var_num_cutpoints[k]);
+        }
 
-        // Penalized CART criterion (before balance correction)
         double G_j_penalized = G_j - search_penalty;
+
+        // Accumulate standardized criterion for eimp (ALL candidates, including negative)
+        criterion_sums[var_ids[k]] += G_j_penalized;
+        criterion_counts[var_ids[k]] += 1;
+
         if (G_j_penalized <= 0) {
-          continue;  // variable does not beat noise floor
+          continue;  // variable does not beat noise floor — skip for selection
         }
 
         // Recover n_L* and n_R* for this variable's best split
@@ -1679,3 +1695,4 @@ void TreeRegression::addImpurityImportance(size_t nodeID, size_t varID, double d
 }
 
 } // namespace ranger
+
