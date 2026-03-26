@@ -145,7 +145,7 @@ If a terminal node has only 0 responses, the estimate is set to \eqn{\alpha 0 + 
 
 \item{penalize.split.competition}{Logical; use the standardized splitting criterion? Default \code{FALSE}. When \code{TRUE}, corrects balance advantage (binary vs. continuous variables) and search advantage (maximization over candidate cutpoints) in split selection. See O'Connell (2026) for details.}
 
-\item{softmax.split}{Logical; use softmax (proportional) variable selection at each node? Default \code{FALSE}. Requires \code{penalize.split.competition = TRUE}. When \code{TRUE}, variables are selected with probability proportional to their standardized criterion rather than by argmax. Ensures all variables with signal receive positive split probability.}
+\item{softmax.split}{Logical; use softmax (proportional) variable selection at each node? Default \code{FALSE}. When \code{TRUE}, variables are selected with probability proportional to their impurity rather than by argmax. Ensures all variables with signal receive positive split probability.}
 
 \item{...}{Further arguments passed to or from other methods (currently ignored).}
 }

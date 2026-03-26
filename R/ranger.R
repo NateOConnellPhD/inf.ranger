@@ -153,7 +153,7 @@
 ##' @param x Predictor data (independent variables), alternative interface to data with formula or dependent.variable.name.
 ##' @param y Response vector (dependent variable), alternative interface to data with formula or dependent.variable.name. For survival use a \code{Surv()} object or a matrix with time and status.
 ##' @param penalize.split.competition Logical; use the standardized splitting criterion? Default \code{FALSE}. When \code{TRUE}, corrects balance advantage (binary vs. continuous variables) and search advantage (maximization over candidate cutpoints) in split selection. See O'Connell (2026) for details.
-##' @param softmax.split Logical; use softmax (proportional) variable selection at each node? Default \code{FALSE}. Requires \code{penalize.split.competition = TRUE}. When \code{TRUE}, variables are selected with probability proportional to their standardized criterion rather than by argmax. Ensures all variables with signal receive positive split probability.
+##' @param softmax.split Logical; use softmax (proportional) variable selection at each node? Default \code{FALSE}. When \code{TRUE}, variables are selected with probability proportional to their impurity rather than by argmax. Ensures all variables with signal receive positive split probability.
 ##' @param ... Further arguments passed to or from other methods (currently ignored).
 ##' @return Object of class \code{ranger} with elements
 ##'   \item{\code{forest}}{Saved forest (If write.forest set to TRUE). Note that the variable IDs in the \code{split.varIDs} object do not necessarily represent the column number in R.}
@@ -265,11 +265,6 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
   ## Handle ... arguments
   if (length(list(...)) > 0) {
     warning(paste("Unused arguments:", paste(names(list(...)), collapse = ", ")))
-  }
-  
-  ## Softmax split selection requires standardized criterion
-  if (softmax.split && !penalize.split.competition) {
-    stop("Error: softmax.split = TRUE requires penalize.split.competition = TRUE.")
   }
   
   ## By default not in GWAS mode
