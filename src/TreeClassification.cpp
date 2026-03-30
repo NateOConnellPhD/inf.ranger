@@ -34,6 +34,10 @@ TreeClassification::TreeClassification(std::vector<std::vector<size_t>>& child_n
         0), class_weights(0), counter { }, counter_per_class { } {
 }
 
+void TreeClassification::honestify(const Data* data) {
+  throw std::runtime_error("Honest forests not implemented for classification trees. Use probability = TRUE.");
+}
+
 void TreeClassification::allocateMemory() {
   // Init counters if not in memory efficient mode
   if (!memory_saving_splitting) {

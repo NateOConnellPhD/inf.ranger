@@ -34,6 +34,8 @@ public:
 
   void allocateMemory() override;
 
+  void honestify(const Data* data) override;
+
   double estimate(size_t nodeID);
   void computePermutationImportanceInternal(std::vector<std::vector<size_t>>* permutations);
   void appendToFileInternal(std::ofstream& file) override;

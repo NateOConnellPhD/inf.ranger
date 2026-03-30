@@ -260,7 +260,13 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
                    verbose = TRUE, node.stats = FALSE, seed = NULL, na.action = "na.learn",
                    dependent.variable.name = NULL, status.variable.name = NULL, 
                    classification = NULL, x = NULL, y = NULL,
-                   penalize.split.competition = FALSE, softmax.split = FALSE, ...) {
+                   penalize.split.competition = FALSE, softmax.split = FALSE, honest = FALSE, ...) {
+  
+  ## Honest forest
+  if (honest) {
+    sample.fraction <- 0.5
+    replace <- FALSE
+  }
   
   ## Handle ... arguments
   if (length(list(...)) > 0) {
@@ -414,7 +420,7 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
   if (quantreg && treetype != 3) {
     stop("Error: Quantile prediction implemented only for regression outcomes.")
   }
-
+  
   independent.variable.names <- colnames(x)
   
   ## respect.unordered.factors
@@ -425,7 +431,7 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
       respect.unordered.factors <- "ignore"
     }
   }
-
+  
   ## Old version of respect.unordered.factors
   if (respect.unordered.factors == TRUE) {
     respect.unordered.factors <- "order"
@@ -443,7 +449,7 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
       ordered.idx <- sapply(x, is.ordered)
       factor.idx <- sapply(x, is.factor)
       recode.idx <- character.idx | (factor.idx & !ordered.idx)
-
+      
       if (any(recode.idx) & (importance == "impurity_corrected" || importance == "impurity_unbiased")) {
         warning("Corrected impurity importance may not be unbiased for re-ordered factor levels. Consider setting respect.unordered.factors to 'ignore' or 'partition' or manually compute corrected importance.")
       }
@@ -459,7 +465,7 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
       if (quantreg) {
         x_orig <- x
       }
-
+      
       ## Recode each column
       x[recode.idx] <- lapply(x[recode.idx], function(xx) {
         if (!is.factor(xx)) {
@@ -591,7 +597,7 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
       stop("Error: Invalid value for min.node.size. Please give a nonnegative value or a vector of nonnegative values.")
     }
   }
-
+  
   ## Minimum bucket size
   if (is.null(min.bucket)) {
     min.bucket <- 0
@@ -760,7 +766,7 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
     if (length(class.weights) != nlevels(y)) {
       stop("Error: Number of class weights not equal to number of classes.")
     }
-
+    
     ## Reorder (C++ expects order as appearing in the data)
     class.weights <- class.weights[unique(as.numeric(y))]
   }
@@ -885,7 +891,7 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
   if (splitrule == "maxstat" & use.regularization.factor) {
     stop("Error: Regularization cannot be used with 'maxstat' splitrule.")
   }
-
+  
   ## Extra trees
   if (!is.numeric(num.random.splits) || num.random.splits < 1) {
     stop("Error: Invalid value for num.random.splits, please give a positive integer.")
@@ -900,7 +906,7 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
   if (!is.numeric(poisson.tau) || poisson.tau <= 0) {
     stop("Error: Invalid value for poisson.tau, please give a positive number.")
   }
-
+  
   ## Unordered factors  
   if (respect.unordered.factors == "partition") {
     ordered.idx <- sapply(x, is.ordered)
@@ -927,7 +933,7 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
   } else {
     stop("Error: Invalid value for respect.unordered.factors, please use 'order', 'partition' or 'ignore'.")
   }
-
+  
   ## Unordered maxstat splitting not possible
   if (use.unordered.factor.variables && !is.null(splitrule)) {
     if (splitrule == "maxstat") {
@@ -1031,8 +1037,9 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
                       regularization.factor, use.regularization.factor, regularization.usedepth,
                       node.stats, time.interest, use.time.interest, any.na,
                       penalize.split.competition,
-                      softmax.split)
-
+                      softmax.split,
+                      honest)
+  
   
   if (length(result) == 0) {
     stop("User interrupt or internal error.")
@@ -1056,7 +1063,7 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
         )
     }
   }
-
+  
   ## Set predictions
   if (treetype == 1 && oob.error) {
     if (is.factor(y)) {
@@ -1117,6 +1124,8 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
     result$num.samples <- nrow(x)
   }
   result$replace <- replace
+  result$honest <- honest
+  result$sample.fraction <- sample.fraction
   
   ## Write forest object
   if (write.forest) {
@@ -1152,7 +1161,7 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
     } else {
       terminal.nodes <- predict(result, x, type = "terminalNodes")$predictions + 1
     }
-  
+    
     n <- result$num.samples
     result$random.node.values <- matrix(nrow = max(terminal.nodes), ncol = num.trees)
     
@@ -1182,4 +1191,3 @@ ranger <- function(formula = NULL, data = NULL, num.trees = 500, mtry = NULL,
   
   return(result)
 }
-

@@ -50,6 +50,7 @@ ranger(
   y = NULL,
   penalize.split.competition = FALSE,
   softmax.split = FALSE,
+  honest = FALSE,
   ...
 )
 }

@@ -32,7 +32,7 @@ Forest::Forest() :
         false), splitrule(DEFAULT_SPLITRULE), predict_all(false), keep_inbag(false), sample_fraction( { 1 }), holdout(
         false), prediction_type(DEFAULT_PREDICTIONTYPE), num_random_splits(DEFAULT_NUM_RANDOM_SPLITS), max_depth(
         DEFAULT_MAXDEPTH), alpha(DEFAULT_ALPHA), minprop(DEFAULT_MINPROP), poisson_tau(DEFAULT_POISSON_TAU), num_threads(DEFAULT_NUM_THREADS), data { }, 
-        overall_prediction_error(NAN), importance_mode(DEFAULT_IMPORTANCE_MODE), regularization_usedepth(false), penalize_split_competition(false), softmax_split(false), progress(0) {
+        overall_prediction_error(NAN), importance_mode(DEFAULT_IMPORTANCE_MODE), regularization_usedepth(false), penalize_split_competition(false), softmax_split(false), honest(false), progress(0) {
 }
 
 // #nocov start
@@ -84,7 +84,7 @@ void Forest::initCpp(std::string dependent_variable_name, MemoryMode memory_mode
   init(loadDataFromFile(input_file), mtry, output_prefix, num_trees, seed, num_threads, importance_mode,
       min_node_size_vector, min_bucket_vector, prediction_mode, sample_with_replacement, unordered_variable_names, memory_saving_splitting,
       splitrule, predict_all, sample_fraction_vector, alpha, minprop, poisson_tau, holdout, prediction_type, num_random_splits,
-      false, max_depth, regularization_factor, regularization_usedepth, false, false, false);
+      false, max_depth, regularization_factor, regularization_usedepth, false, false, false, false);
 
   if (prediction_mode) {
     loadFromFile(load_forest_filename);
@@ -143,7 +143,7 @@ void Forest::initR(std::unique_ptr<Data> input_data, uint mtry, uint num_trees, 
     std::vector<std::vector<size_t>>& manual_inbag, bool predict_all, bool keep_inbag,
     std::vector<double>& sample_fraction, double alpha, double minprop, double poisson_tau, bool holdout, PredictionType prediction_type,
     uint num_random_splits, bool order_snps, uint max_depth, const std::vector<double>& regularization_factor,
-    bool regularization_usedepth, bool node_stats, bool penalize_split_competition, bool softmax_split) {
+    bool regularization_usedepth, bool node_stats, bool penalize_split_competition, bool softmax_split, bool honest) {
 
   this->verbose_out = verbose_out;
 
@@ -151,7 +151,7 @@ void Forest::initR(std::unique_ptr<Data> input_data, uint mtry, uint num_trees, 
   init(std::move(input_data), mtry, "", num_trees, seed, num_threads, importance_mode, min_node_size, min_bucket,
       prediction_mode, sample_with_replacement, unordered_variable_names, memory_saving_splitting, splitrule,
       predict_all, sample_fraction, alpha, minprop, poisson_tau, holdout, prediction_type, num_random_splits, order_snps, max_depth,
-      regularization_factor, regularization_usedepth, node_stats, penalize_split_competition, softmax_split);
+      regularization_factor, regularization_usedepth, node_stats, penalize_split_competition, softmax_split, honest);
 
   // Set variables to be always considered for splitting
   if (!always_split_variable_names.empty()) {
@@ -185,7 +185,7 @@ void Forest::init(std::unique_ptr<Data> input_data, uint mtry, std::string outpu
     bool prediction_mode, bool sample_with_replacement, const std::vector<std::string>& unordered_variable_names,
     bool memory_saving_splitting, SplitRule splitrule, bool predict_all, std::vector<double>& sample_fraction,
     double alpha, double minprop, double poisson_tau, bool holdout, PredictionType prediction_type, uint num_random_splits, bool order_snps,
-    uint max_depth, const std::vector<double>& regularization_factor, bool regularization_usedepth, bool node_stats, bool penalize_split_competition, bool softmax_split) {
+    uint max_depth, const std::vector<double>& regularization_factor, bool regularization_usedepth, bool node_stats, bool penalize_split_competition, bool softmax_split, bool honest) {
 
   // Initialize data with memmode
   this->data = std::move(input_data);
@@ -231,6 +231,11 @@ void Forest::init(std::unique_ptr<Data> input_data, uint mtry, std::string outpu
   this->save_node_stats = node_stats;
   this->penalize_split_competition = penalize_split_competition;
   this->softmax_split = softmax_split;
+  this->honest = honest;
+  if (honest && !prediction_mode) {
+    this->sample_with_replacement = false;
+    this->sample_fraction = {0.5};
+  }
 
   // Set number of samples and variables
   num_samples = data->getNumRows();
@@ -296,6 +301,10 @@ void Forest::run(bool verbose, bool compute_oob_error) {
     }
 
     grow();
+
+    if (honest) {
+      honestifyTrees();
+    }
 
     if (verbose && verbose_out) {
       *verbose_out << "Computing prediction error .." << std::endl;
@@ -533,6 +542,21 @@ void Forest::grow() {
     for (auto& v : variable_importance) {
       v /= num_trees;
     }
+  }
+}
+
+void Forest::honestifyTrees() {
+  std::vector<std::thread> threads;
+  threads.reserve(num_threads);
+  for (uint i = 0; i < num_threads; ++i) {
+    threads.emplace_back([this, i]() {
+      for (size_t t = thread_ranges[i]; t < thread_ranges[i + 1]; ++t) {
+        trees[t]->honestify(data.get());
+      }
+    });
+  }
+  for (auto& thread : threads) {
+    thread.join();
   }
 }
 

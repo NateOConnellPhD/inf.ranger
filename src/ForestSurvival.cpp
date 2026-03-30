@@ -113,6 +113,10 @@ void ForestSurvival::initInternal() {
   }
 }
 
+std::unique_ptr<Tree> ForestSurvival::createTreeInternal() {
+  return std::make_unique<TreeSurvival>(&unique_timepoints, &response_timepointIDs);
+}
+
 void ForestSurvival::growInternal() {
   
   // If unique time points not set, use observed times

@@ -46,6 +46,7 @@ public:
 private:
   void initInternal() override;
   void growInternal() override;
+  std::unique_ptr<Tree> createTreeInternal() override;
   void allocatePredictMemory() override;
   void predictInternal(size_t sample_idx) override;
   void computePredictionErrorInternal() override;

@@ -88,6 +88,10 @@ void ForestRegression::initInternal() {
   }
 }
 
+std::unique_ptr<Tree> ForestRegression::createTreeInternal() {
+  return std::make_unique<TreeRegression>();
+}
+
 void ForestRegression::growInternal() {
   trees.reserve(num_trees);
   for (size_t i = 0; i < num_trees; ++i) {

@@ -45,6 +45,9 @@ public:
 
   virtual void allocateMemory() = 0;
 
+  // Honest: recompute leaf values from OOB observations
+  virtual void honestify(const Data* data) = 0;
+
   void grow(std::vector<double>* variable_importance);
 
   void predict(const Data* prediction_data, bool oob_prediction);

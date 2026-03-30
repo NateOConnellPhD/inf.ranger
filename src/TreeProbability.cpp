@@ -28,6 +28,49 @@ TreeProbability::TreeProbability(std::vector<std::vector<size_t>>& child_nodeIDs
         0), terminal_class_counts(terminal_class_counts), class_weights(0), counter(0), counter_per_class(0) {
 }
 
+void TreeProbability::honestify(const Data* data) {
+  // Route OOB observations through tree structure, recompute class
+  // proportions from OOB observations only.
+  size_t num_nodes = split_varIDs.size();
+  size_t num_classes = class_values->size();
+
+  std::vector<std::vector<double>> oob_counts(num_nodes, std::vector<double>(num_classes, 0.0));
+  std::vector<size_t> oob_total(num_nodes, 0);
+
+  for (size_t i = 0; i < num_samples_oob; ++i) {
+    size_t s = oob_sampleIDs[i];
+    size_t nodeID = 0;
+    while (child_nodeIDs[0][nodeID] != 0 || child_nodeIDs[1][nodeID] != 0) {
+      size_t varID = split_varIDs[nodeID];
+      double value = data->get_x(s, varID);
+      if (data->isOrderedVariable(varID)) {
+        nodeID = (value <= split_values[nodeID]) ? child_nodeIDs[0][nodeID] : child_nodeIDs[1][nodeID];
+      } else {
+        size_t factorID = std::floor(value) - 1;
+        size_t splitID = std::floor(split_values[nodeID]);
+        nodeID = (!(splitID & (1ULL << factorID))) ? child_nodeIDs[0][nodeID] : child_nodeIDs[1][nodeID];
+      }
+    }
+    // Map response to class index
+    uint classID = (*response_classIDs)[s];
+    oob_counts[nodeID][classID]++;
+    oob_total[nodeID]++;
+  }
+
+  // Replace terminal class counts with OOB proportions
+  for (size_t nodeID = 0; nodeID < num_nodes; ++nodeID) {
+    if (child_nodeIDs[0][nodeID] == 0 && child_nodeIDs[1][nodeID] == 0) {
+      if (oob_total[nodeID] > 0) {
+        terminal_class_counts[nodeID].resize(num_classes);
+        double total = static_cast<double>(oob_total[nodeID]);
+        for (size_t c = 0; c < num_classes; ++c) {
+          terminal_class_counts[nodeID][c] = oob_counts[nodeID][c] / total;
+        }
+      }
+    }
+  }
+}
+
 void TreeProbability::allocateMemory() {
   // Init counters if not in memory efficient mode
   if (!memory_saving_splitting) {

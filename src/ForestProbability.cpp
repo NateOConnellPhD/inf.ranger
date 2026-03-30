@@ -107,6 +107,10 @@ void ForestProbability::initInternal() {
   }
 }
 
+std::unique_ptr<Tree> ForestProbability::createTreeInternal() {
+  return std::make_unique<TreeProbability>(&class_values, &response_classIDs, &sampleIDs_per_class, &class_weights);
+}
+
 void ForestProbability::growInternal() {
   trees.reserve(num_trees);
   for (size_t i = 0; i < num_trees; ++i) {

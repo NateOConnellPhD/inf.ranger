@@ -63,7 +63,7 @@ Rcpp::List rangerCpp(uint treetype, Rcpp::NumericMatrix& input_x, Rcpp::NumericM
     std::vector<std::vector<size_t>>& inbag, bool use_inbag,
     std::vector<double>& regularization_factor, bool use_regularization_factor, bool regularization_usedepth,
     bool node_stats, std::vector<double>& time_interest, bool use_time_interest, bool any_na,
-    bool penalize_split_competition, bool softmax_split) {
+    bool penalize_split_competition, bool softmax_split, bool honest) {
   
   Rcpp::List result;
 
@@ -157,7 +157,7 @@ Rcpp::List rangerCpp(uint treetype, Rcpp::NumericMatrix& input_x, Rcpp::NumericM
         importance_mode, min_node_size, min_bucket, split_select_weights, always_split_variable_names,
         prediction_mode, sample_with_replacement, unordered_variable_names, save_memory, splitrule, case_weights,
         inbag, predict_all, keep_inbag, sample_fraction, alpha, minprop, poisson_tau, holdout, prediction_type, num_random_splits, 
-        order_snps, max_depth, regularization_factor, regularization_usedepth, node_stats, penalize_split_competition, softmax_split);
+        order_snps, max_depth, regularization_factor, regularization_usedepth, node_stats, penalize_split_competition, softmax_split, honest);
 
     // Load forest object if in prediction mode
     if (prediction_mode) {

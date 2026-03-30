@@ -26,6 +26,42 @@ TreeRegression::TreeRegression(std::vector<std::vector<size_t>>& child_nodeIDs, 
     Tree(child_nodeIDs, split_varIDs, split_values), counter(0), sums(0) {
 }
 
+void TreeRegression::honestify(const Data* data) {
+  // Route OOB observations through tree structure, recompute leaf means
+  // from OOB Y values only. This makes the tree honest: structure from
+  // in-bag, estimation from OOB.
+  size_t num_nodes = split_varIDs.size();
+  std::vector<double> leaf_sum(num_nodes, 0.0);
+  std::vector<size_t> leaf_cnt(num_nodes, 0);
+
+  for (size_t i = 0; i < num_samples_oob; ++i) {
+    size_t s = oob_sampleIDs[i];
+    size_t nodeID = 0;
+    while (child_nodeIDs[0][nodeID] != 0 || child_nodeIDs[1][nodeID] != 0) {
+      size_t varID = split_varIDs[nodeID];
+      double value = data->get_x(s, varID);
+      if (data->isOrderedVariable(varID)) {
+        nodeID = (value <= split_values[nodeID]) ? child_nodeIDs[0][nodeID] : child_nodeIDs[1][nodeID];
+      } else {
+        size_t factorID = std::floor(value) - 1;
+        size_t splitID = std::floor(split_values[nodeID]);
+        nodeID = (!(splitID & (1ULL << factorID))) ? child_nodeIDs[0][nodeID] : child_nodeIDs[1][nodeID];
+      }
+    }
+    leaf_sum[nodeID] += data->get_y(s, 0);
+    leaf_cnt[nodeID]++;
+  }
+
+  // Replace terminal node values with OOB means
+  for (size_t nodeID = 0; nodeID < num_nodes; ++nodeID) {
+    if (child_nodeIDs[0][nodeID] == 0 && child_nodeIDs[1][nodeID] == 0) {
+      if (leaf_cnt[nodeID] > 0) {
+        split_values[nodeID] = leaf_sum[nodeID] / static_cast<double>(leaf_cnt[nodeID]);
+      }
+    }
+  }
+}
+
 void TreeRegression::allocateMemory() {
   // Init counters if not in memory efficient mode
   if (!memory_saving_splitting) {

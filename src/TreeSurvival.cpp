@@ -35,6 +35,10 @@ TreeSurvival::TreeSurvival(std::vector<std::vector<size_t>>& child_nodeIDs, std:
   this->num_timepoints = unique_timepoints->size();
 }
 
+void TreeSurvival::honestify(const Data* data) {
+  throw std::runtime_error("Honest forests not implemented for survival trees.");
+}
+
 void TreeSurvival::allocateMemory() {
   // Number of deaths and samples at risk for each timepoint
   num_deaths.resize(num_timepoints);
